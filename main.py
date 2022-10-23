@@ -1,4 +1,4 @@
-from atributes import Atributes, Weapons
+from attributes import Atributes, Weapons
 from dice import dice_success, dice
 #from weapons import Weapons
 from events import fight_1v1
