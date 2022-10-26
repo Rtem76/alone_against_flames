@@ -60,7 +60,7 @@ skills_initial = {
     "Swim": [25, None],
     "Throw": [25, None],
     "Track": [10, None],
-    "Melee Weapon": [25, None],
+    "Melee Weapon": [70, None],
 }
 #p1_skills = copy.deepcopy(skills_initial)
 #p2_skills = copy.deepcopy(skills_initial)
