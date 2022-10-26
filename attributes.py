@@ -1,4 +1,5 @@
 import copy
+import math
 import random
 from skills import skills_initial
 
@@ -18,19 +19,17 @@ default_current_condition = {
     "Sanity": [10, 10],
     "Hit Points": [1, 1],
     "Magic Points": [1, 1],
-    "Status": ["OK"],
-    # conditions od Wounds is [1:0] is Major Wound, and [*,1] is KO...
-    "Wounds": ["OK"],
-    # conditions od Death is [1:0] is a dying state, and [*,1] means Dead...
-    "Death": ["Alive"]
+    "Status": "OK",
+    "Wounds": "OK",
+    "Death": "Alive"
 }
 default_weapons = {
-    #   {Name}   [Qtty][Damage][SkillForUse][SkillRequiments][MaxRange][EquipmentSlot][Nslots]
+    #   {Name}   [Qtty][Damage][SkillForUse][SkillRequiments][MaxRange][EquipmentSlot][Nslots][Type of inflicting damage]
     # format of Damage => [xDy] 'x'-time Dice 'y'-num  [+S](Str bonus == low Str - 40 / 20) [+D] (dex bonus-same as str)
-    "Short Sword": [1, "1D6", "Melee Weapon", 20, 3, "Weapon", 1],
-    "Unarmed": [1, "2D3+2", "Fist/Punch", 5, 1, "Weapon", 2],
-    "Iron Knuckles": [0, "2D6+2", "Fist/Punch", 40, 3, "Weapon", 2],
-    "Pistol": [1, "2D3+1+1D4", "Handgun", 20, 30, "Weapon", 1]
+    "Short Sword": [1, "1D6", "Melee Weapon", 20, 3, "Weapon", 1, "Bladed"],
+    "Unarmed": [1, "2D3+2", "Fist/Punch", 5, 1, "Weapon", 2, "Blunt"],
+    "Iron Knuckles": [0, "2D6+2", "Fist/Punch", 40, 3, "Weapon", 2, "Blunt"],
+    "Pistol": [1, "2D3+1+1D4", "Handgun", 20, 30, "Weapon", 1, "Piercing"]
 }
 default_armor = {
     # armors are [True]in items[True]equiped[]force against physical[]bonus magical[]dura[]equpment slot
@@ -50,9 +49,8 @@ default_equipment = {
 class Creature:
     def __init__(self, is_player: bool, name: str, race: str):
         self.up_extreme = True
-        self.up_hard = False
-        # Attacks Per Round.
-        self.apr = 3
+        # [apr] means number of Attacks Per Round.
+        self.apr = 2
         self.default = "Fight back"
         self.is_player = is_player
         self.creature = [name, race]
@@ -67,23 +65,26 @@ class Creature:
     def __str__(self):
         return str(self)
 
+    def __add__(self, other):
+        return f"{str(self)}{str(other)}"
+
     def find_skill_value(self, skill_name):
         # print(f'{self.creature[0]} skill {skill_name} is: {self.skills[skill_name][0]}')
         return self.skills[skill_name][0]
 
-    def raise_skill(self, skill_name):
-        print(f'{self.creature[0]} has an attempt to raise the {skill_name} skill')
+    def raise_skill(self, skill_name, value: int = 10):
+        print(f'[{self.creature[0]}] has an attempt to raise the [{skill_name}] skill')
         result_of_dice = self.dice(100)
         current = self.find_skill_value(skill_name)
         if result_of_dice > current:
-            if result_of_dice >= current + 10:
-                current += 10
+            if result_of_dice >= current + value:
+                current += value
             else:
                 current = result_of_dice
-            print(f"Congratulation's {self.creature[0]} skill of {skill_name} upgraded to {current}")
+            print(f"Congratulation's [{self.creature[0]}] skill of [{skill_name}] upgraded to [{current}]")
             self.skills[skill_name][0] = current
         else:
-            print(f'{self.creature[0]} Failed his attempt to upgrade his {skill_name} skill')
+            print(f'[{self.creature[0]}] Failed his attempt to upgrade his [{skill_name}] skill')
     def inspect_skills(self):
         print(
             f"\n============================== Let's look skills of {self.creature[0]} ==============================",
@@ -104,7 +105,7 @@ class Creature:
     def dice(self, num):
         if num in (3, 4, 6, 8, 20):
             result = random.randrange(1, num)
-            print(f"Result of {num} sided knuckle dice is {result}")
+            print(f"Result of [{num}] sided knuckle dice is [{result}]")
             return result
         elif num == 100:
             first_dice = random.randrange(0, 9)
@@ -112,7 +113,7 @@ class Creature:
             result = int(str(first_dice) + str(second_dice))
             if result == 0:
                 result = 100
-            print(f"The ten's dice is {first_dice} and unit dice is {second_dice} equal to {result}")
+            print(f"The [ten's] dice is [{first_dice}] and [unit] dice is [{second_dice}] equal to [{result}]")
             return result
 
     def dice_success_attributes(self, cond):
@@ -137,12 +138,12 @@ class Creature:
         if num <= chosen_cond / 5:
             print("Extreme success")
             if self.up_extreme:
-                self.raise_skill(skill)
+                self.raise_skill(skill, 3)
             return "Extreme success"
         elif num <= chosen_cond / 2:
             print("Hard success")
-            if self.up_hard:
-                self.raise_skill(skill)
+            if self.skills[skill][1]:
+                self.raise_skill(skill, 2)
             return "Hard success"
         elif num <= chosen_cond:
             print("Regular success")
@@ -155,39 +156,46 @@ class Creature:
         hp_init = self.condition["Hit Points"][0]
         hp_max = self.condition["Hit Points"][1]
         if hp_max <= value:
+            print(f'[{self.creature[0]}] is getting hit with Lethal amount of damage [{value}], so hi died permanently...')
             hp_new = 0
-            self.condition["Death"] = ["DEAD"]
+            self.condition["Death"] = "DEAD"
         elif hp_max / 2 <= value:
             hp_new = hp_init - value
-            print(f'{self.creature[0]} is getting hit with major damage\n'
-                  f'now its time to check for CON attribute:{self.choose_attribute("Constitution")}')
+            print(f'[{self.creature[0]}] is getting hit with major damage [{value}]\n'
+                  f'now its time to check with dice[100] for [Constitution]:[{self.choose_attribute("Constitution")}]')
             if self.dice_success_attributes("Constitution") == "Failed":
-                self.condition["Wounds"] = ["Major Wound"]
-                print(f"{self.creature[0]} get wounded with major damage: {value}")
+                self.condition["Wounds"] = "Major Wound"
+                print(f"[{self.creature[0]}] get wounded with a Major Wound")
         else:
             hp_new = hp_init - value
-            print(f"{self.creature[0]} get minor damage: {value}")
+            print(f"[{self.creature[0]}] get minor damage: [{value}]")
 
-        if self.condition["Death"] == ["Dying"]:
+        if self.condition["Death"] == "Dying":
             if self.is_player == False:
-                self.condition["Death"] = ["DEAD"]
+                self.condition["Death"] = "DEAD"
             if hp_new < 0:
                 hp_new = 0
+            print(f"[{self.creature[0]}] is at the dying state\n"
+                  f"fime for [dice(100)] on [Constitution]:[{self.attributes['Constitution']}]")
             if self.dice_success_attributes("Constitution") == "Failed":
-                self.condition["Death"] = ['DEAD']
+                self.condition["Death"] = 'DEAD'
 
         elif hp_new <= 0 and self.condition["Death"] != ["DEAD"]:
             hp_new = 0
-            if self.is_player == True:
-                self.condition["Death"] = ["Dying"]
-                print(f"{self.creature[0]} HP has fall to Zero, now {self.creature[0]} is at the dying state")
+            if self.is_player and self.condition["Wounds"] == "Major Wound":
+                self.condition["Death"] = "Dying"
+                print(f"[{self.creature[0]}] HP has fall to Zero, now [{self.creature[0]}] is at the dying state\n"
+                      f"fime for dice[100] on [Constitution]:[{self.attributes['Constitution']}]")
                 if self.dice_success_attributes("Constitution") == "Failed":
-                    self.condition["Death"] = ["DEAD"]
-                    print(f"{self.creature[0]} FAILED to survive, now he is DEAD")
+                    self.condition["Death"] = "DEAD"
+                    print(f"[{self.creature[0]}] FAILED to survive, now he is [DEAD]")
                 else:
-                    print(f"{self.creature[0]} SUCCEED to survive, but he is at dying state")
+                    print(f"[{self.creature[0]}] SUCCEED to survive, but he is at [Dying] state")
+            elif self.is_player and self.condition["Wounds"] != "Major Wound":
+                self.condition["Death"] = "Knocked Out"
+                print(f"[{self.creature[0]}] HP has fall to Zero, now [{self.creature[0]}] is Knocked Out")
             else:
-                self.condition["Death"] = ["DEAD"]
+                self.condition["Death"] = "DEAD"
         self.condition["Hit Points"][0] = hp_new
         print(f'{self.creature[0]} left {self.condition["Hit Points"][0]} of {self.condition["Hit Points"][1]} HP')
 
@@ -257,7 +265,7 @@ class Creature:
             f"\n============================ Let's look what weapon's do {self.creature[0]} have ============================")
         for weapon in self.weapon:
             if self.weapon[weapon][0] > 0 and self.equipment["Weapon"][0] == weapon:
-                print(f'EQUIPPED with {weapon}: '
+                print(f'EQUIPPED with [{weapon}]: '
                       f'|| QTY:{self.weapon[weapon][0]} || DMG:{self.weapon[weapon][1]} || SKL: {self.weapon[weapon][2]}:{self.weapon[weapon][3]}'
                       f' || RNG:{self.weapon[weapon][4]} || Hands to equip:{self.weapon[weapon][6]}')
             elif self.weapon[weapon][0] > 0:
@@ -269,30 +277,30 @@ class Creature:
 
     def equip_weapon(self, weapon):
         if self.equipment["Weapon"][0] == weapon:
-            print(f'Listen to me {self.creature[0]}, you all ready equipped with {weapon}')
+            print(f'Listen to me [{self.creature[0]}], you all ready equipped with [{weapon}]')
         elif self.weapon[weapon][0] == 0:
             print(
-                f'Listen to me {self.creature[0]}, for successfully equip some {weapon}, you need to buy at least one {weapon}')
+                f'Listen to me [{self.creature[0]}], for successfully equip some [{weapon}], you need to buy at least one [{weapon}]')
         else:
             if self.weapon[weapon][6] == 1:
                 if self.weapon[weapon][0] >= 1 and self.equipment["Weapon"][0] != weapon:
                     if self.equipment["Weapon"][0] != self.equipment["Weapon"][1]:
                         if self.equipment["Weapon"][0] == None:
                             self.equipment["Weapon"][0] = weapon
-                            print(f'{weapon} was successfully equipped by {self.creature[0]}')
+                            print(f'[{weapon}] was successfully equipped by [{self.creature[0]}]')
                         else:
-                            print(f'{self.equipment["Weapon"][0]} was unequipped by {self.creature[0]}')
-                            print(f'{weapon} was successfully equipped by {self.creature[0]}')
+                            print(f'[{self.equipment["Weapon"][0]}] was unequipped by [{self.creature[0]}]')
+                            print(f'[{weapon}] was successfully equipped by [{self.creature[0]}]')
                     else:
                         if self.equipment["Weapon"][1] != None:
-                            print(f'{self.equipment["Weapon"][1]} was unequipped by {self.creature[0]}')
+                            print(f'[{self.equipment["Weapon"][1]}] was unequipped by [{self.creature[0]}]')
                         self.equipment["Weapon"][0] = weapon
                         self.equipment["Weapon"][1] = None
-                        print(f'{weapon} was successfully equipped by {self.creature[0]}')
+                        print(f'[{weapon}] was successfully equipped by [{self.creature[0]}]')
             elif self.weapon[weapon][6] == 2:
                 self.equipment["Weapon"][0] = weapon
                 self.equipment["Weapon"][1] = weapon
-                print(f'{weapon} was successfully equipped by {self.creature[0]}')
+                print(f'[{weapon}] was successfully equipped by [{self.creature[0]}]')
 
     def inspect_equipment(self):
         print(
@@ -331,11 +339,28 @@ class Creature:
                 print("Wrong Input, only single digit [1,2,3,4,5,0] is acceptable")
 
     def combat_seq(self,monster):
-        if self.choose_attribute("Dexterity") >= monster.choose_attribute("Dexterity"):
+        if self.choose_attribute("Dexterity") > monster.choose_attribute("Dexterity"):
+            print(f'[{self.creature[0]}] have more [Dexterity] than [{monster.creature[0]}], so he will attack first')
             return "1"
-        else:
+        elif self.choose_attribute("Dexterity") < monster.choose_attribute("Dexterity"):
+            print(f'[{self.creature[0]}] have less [Dexterity] than [{monster.creature[0]}], so he will defend first')
             return "2"
-
+        else:
+            print(f'[{self.creature[0]}] have same Dexterity as [{monster.creature[0]}], so dice 100 is calling')
+            while True:
+                first_dice = self.dice(100)
+                second_dice = monster.dice(100)
+                if first_dice > second_dice:
+                    print(f"[{self.creature[0]}] win's with result [{first_dice}] VS [{monster.creature[0]}]"
+                          f" result [{second_dice}], he will attack first")
+                    return "1"
+                if first_dice < second_dice:
+                    print(f"[{self.creature[0]}] loose with result [{first_dice}] VS [{monster.creature[0]}]"
+                          f" result [{second_dice}], he will defend first")
+                    return "2"
+                else:
+                    print("Results are even, so let's try again")
+                    pass
     def success_to_num(self, success):
         result=0
         for item in ["Failed", "Regular success", "Hard success", "Extreme success"]:
@@ -381,9 +406,8 @@ class Creature:
                     "INPUT: ")
                 if user_input == "1":
                     return [self.check_fight_back_success(), "F"]
-
                 elif user_input == "2":
-                    self.lllllllllllllllllllllll()
+                    return [self.check_dodge_success(), "D"]
                 elif user_input == "3":
                     self.lllllllllllllllllllllll()
                 elif user_input == "4":
@@ -406,51 +430,150 @@ class Creature:
     def check_weapon_type(self, name):
         return (f'{self.weapon[name][2]}')
 
+    def check_weapon_harm(self, name):
+        return (f'{self.weapon[name][7]}')
+
     def check_attack_success(self):
-        print(f'{self.creature[0]} is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}]'
+        print(f'[{self.creature[0]}] is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}]'
               f':[{self.find_skill_value(self.check_weapon_type(self.equipment["Weapon"][0]))}]'
               f' attack with [{self.equipment["Weapon"][0]}]')
         return (self.dice_success_skill(self.check_weapon_type(self.equipment["Weapon"][0])))
 
     def check_fight_back_success(self):
-        print(f'{self.creature[0]} is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}]'
+        print(f'[{self.creature[0]}] is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}]'
               f':[{self.find_skill_value(self.check_weapon_type(self.equipment["Weapon"][0]))}]'
               f' fight back with [{self.equipment["Weapon"][0]}]')
         return (self.dice_success_skill(self.check_weapon_type(self.equipment["Weapon"][0])))
 
     def check_dodge_success(self):
-        print(f'{self.creature[0]} is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}]'
-              f':[{self.find_skill_value(self.check_weapon_type(self.equipment["Weapon"][0]))}]'
-              f' fight back with [{self.equipment["Weapon"][0]}]')
-        return (self.dice_success_skill(self.check_weapon_type(self.equipment["Weapon"][0])))
+        print(f'[{self.creature[0]}] is preparing to [Dodge]:[{self.find_skill_value("Dodge")}]'
+              f':[{self.find_skill_value(self.check_weapon_type(self.equipment["Weapon"][0]))}]')
+        return (self.dice_success_skill('Dodge'))
+
+
+    def bonus_damage(self):
+        if self.check_weapon_type(self.equipment["Weapon"][0]) in ['Melee Weapon', 'Fist/Punch']:
+            bonus_damage = random.randrange(3) * math.floor((self.attributes['Strength'] + self.attributes['Size']-80)/50)
+            return bonus_damage
 
     def attack_value(self):
         damage_form = self.check_weapon_attack(self.equipment["Weapon"][0])
-        print(f'{self.creature[0]} is preparing [{self.check_weapon_type(self.equipment["Weapon"][0])}] attack with '
+        print(f'{self.creature[0]} running [{self.check_weapon_type(self.equipment["Weapon"][0])}] attack with '
               f'[{self.equipment["Weapon"][0]}], which damage formula is [{damage_form}]')
         damage_inflict = 0
-        if len(damage_form) == 3:
+        if len(damage_form) == 3: # Some thing like [1D4]
             for _ in range(int(damage_form[0])):
                 damage_inflict += self.dice(int(damage_form[2]))
-        elif len(damage_form) == 5:
+        elif len(damage_form) == 5: # Something like [1D3+1]
             for _ in range(int(damage_form[0])):
                 damage_inflict += self.dice(int(damage_form[2]))
-            damage_inflict += int(damage_form[4])
-        elif len(damage_form) == 7:
+            damage_inflict += damage_form[4]
+        elif len(damage_form) == 6: # Some thing like [1D4+DB]
+            for _ in range(int(damage_form[0])):
+                damage_inflict += self.dice(int(damage_form[2]))
+            damage_inflict += self.bonus_damage()
+        elif len(damage_form) == 7: # Some thing like [1D4+1D3]
             for _ in range(int(damage_form[0])):
                 damage_inflict += self.dice(int(damage_form[2]))
             for _ in range(int(damage_form[4])):
                 damage_inflict += self.dice(int(damage_form[6]))
-        elif len(damage_form) == 9:
+        elif len(damage_form) == 8: # Some thing like [1D4+1D3DB]
             for _ in range(int(damage_form[0])):
                 damage_inflict += self.dice(int(damage_form[2]))
-            damage_inflict += int(damage_form[4])
-            for _ in range(int(damage_form[6])):
-                damage_inflict += self.dice(int(damage_form[8]))
+        elif len(damage_form) == 10: # Some thing like [1D4+1D3+DB]
+            for _ in range(int(damage_form[0])):
+                damage_inflict += self.dice(int(damage_form[2]))
+            for _ in range(int(damage_form[4])):
+                damage_inflict += self.dice(int(damage_form[6]))
         return damage_inflict
 
-
+    def critical_value(self): # all type of gun's are making 50% raised damage then it's critical
+        damage_form = self.check_weapon_attack(self.equipment["Weapon"][0])
+        print(f'{self.creature[0]} running [{self.check_weapon_type(self.equipment["Weapon"][0])}] Critical attack with '
+              f'[{self.equipment["Weapon"][0]}], which damage formula is [{damage_form}]')
+        damage_inflict = 0
+        if len(damage_form) == 3: # Some thing like [1D4]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict +  math.floor(self.dice(int(damage_form[2]))*1.5)
+        elif len(damage_form) == 5: # Something like [1D3+1]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict +  self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict +  int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict +  math.floor(self.dice(int(damage_form[2])) * 1.5)
+            damage_inflict = damage_inflict + int(damage_form[4])
+        elif len(damage_form) == 6: # Some thing like [1D4+DB]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[2])) * 1.5)
+            damage_inflict = damage_inflict + self.bonus_damage()
+        elif len(damage_form) == 7: # Some thing like [1D4+1D3]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict =  damage_inflict + self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[2])) * 1.5)
+            for _ in range(int(damage_form[4])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[6])) + int(damage_form[6])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[6])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[6])) * 1.5)
+        elif len(damage_form) == 8: # Some thing like [1D4+1D3DB]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[2])) * 1.5)
+            for _ in range(int(damage_form[4])):
+                damage_inflict = damage_inflict + self.dice(int(damage_form[6]))
+        elif len(damage_form) == 10: # Some thing like [1D4+1D3+DB]
+            for _ in range(int(damage_form[0])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[2])) + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[2])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[2])) * 1.5)
+            for _ in range(int(damage_form[4])):
+                if self.check_weapon_harm(self.equipment["Weapon"][0]) == "Bladed":
+                    damage_inflict = damage_inflict + self.dice(int(damage_form[6])) + int(damage_form[6])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Blunt":
+                    damage_inflict = damage_inflict + int(damage_form[6])
+                elif self.check_weapon_harm(self.equipment["Weapon"][0]) == "Piercing":
+                    damage_inflict = damage_inflict + math.floor(self.dice(int(damage_form[6])) * 1.5)
+            damage_inflict = damage_inflict + self.bonus_damage()
+        return damage_inflict
 '''
+
+
+    def print_name_hp(self):
+        output = str(f'[{self.creature[0]}] {self.condition["Hit Points"][0]}/{self.condition["Hit Points"][1]}')
+        if self.is_player:
+            if self.condition["Status"] != "OK":
+                output += str(f', [{self.condition["Status"]}]')
+            if self.condition["Wounds"] != "OK":
+                output += str(f', [{self.condition["Wounds"]}]')
+            if self.condition["Death"] != "Alive":
+                output += str(f'and [{self.condition["Death"]}]')
+        return output
+
 
     def dealt_damage(self, range):
         damage = self.damage

@@ -1,6 +1,6 @@
 import copy
 
-# skills dictionary => skill aka key: [value, mastering, "description"]
+# skills dictionary => skill aka key: [value, mastering-raise skill at hard success actions]
 
 skills_initial = {
     "Accounting": [10, None],
@@ -16,7 +16,7 @@ skills_initial = {
     "Craft": [5, None],
     "Credit Rating": [15, None],
     "Disguise": [1, None],
-    "Dodge": [10, None],
+    "Dodge": [50, None],
     "Drive Automobile": [20, None],
     "Electrical Repair": [10, None],
     "Fast Talk": [5, None],
@@ -60,7 +60,7 @@ skills_initial = {
     "Swim": [25, None],
     "Throw": [25, None],
     "Track": [10, None],
-    "Melee Weapon": [70, None],
+    "Melee Weapon": [30, None],
 }
 #p1_skills = copy.deepcopy(skills_initial)
 #p2_skills = copy.deepcopy(skills_initial)
